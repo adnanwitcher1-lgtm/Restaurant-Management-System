@@ -1,0 +1,42 @@
+<div class="row g-3">
+  {% for col in columns %}
+  <div class="col-12 col-lg-4">
+    <h5 class="mb-3">
+      {{ col.title }}
+      <span class="badge bg-secondary">{{ col.orders|length }}</span>
+    </h5>
+    {% for o in col.orders %}
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+              <strong>#{{ o.pk }} &middot; {% if o.table %}Table {{ o.table.name }}{% else %}Takeaway{% endif %}</strong>
+          <span class="text-muted small">{{ o.created_at|timesince }} ago</span>
+        </div>
+        <ul class="list-unstyled mb-3">
+          {% for i in o.items.all %}
+          <li>
+            {{ i.quantity }} &times; {{ i.name }} {% if i.note %}
+            <div class="text-muted small">{{ i.note }}</div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% if o.note %}<div class="alert alert-warning py-1 px-2 small mb-3"><strong>Note:</strong> {{ o.note }}</div>{% endif %}
+        {% if col.next %}
+        <button
+          type="button"
+          class="btn btn-accent btn-sm w-100 k-action"
+          data-id="{{ o.pk }}"
+          data-status="{{ col.next }}"
+        >
+          {{ col.button }}
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-muted small">No orders</div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>

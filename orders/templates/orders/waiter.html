@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'customer' %}Order - {{ branch.name }}{% else %}New Order - TezPOS Pro{% endif %}{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">
+    {% if mode == 'customer' %}Table {{ table.name }}
+    {% elif mode == 'add' %}Add items to Order #{{ add_order.pk }}
+    {% else %}New Order{% endif %}
+    {% if branch %}<span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}
+  </h2>
+  {% if mode != 'customer' %}
+    <a href="{% url 'orders:list' %}" class="btn btn-outline-secondary">View orders</a>
+  {% endif %}
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+  {% csrf_token %}
+  {{ menu|json_script:"menu-data" }}
+
+  <div id="waiterApp" class="row g-3"
+       data-mode="{{ mode }}" data-submit-url="{{ submit_url }}" data-list-url="{% url 'orders:list' %}"
+       data-label="{% if mode == 'customer' %}Place order{% elif mode == 'add' %}Add to order{% else %}Send to kitchen{% endif %}">
+
+    <div class="col-lg-8">
+      <div class="cat-strip" id="categoryPills">
+        <button type="button" class="cat-chip cat-chip-btn js-category active" data-category="all">
+          <span class="cat-thumb cat-thumb-empty"><i class="bi bi-grid"></i></span>All
+        </button>
+        {% for c in categories %}
+          <button type="button" class="cat-chip cat-chip-btn js-category" data-category="{{ c.pk }}">
+            {% if c.image %}
+              <img src="{{ c.image.url }}" alt="" class="cat-thumb">
+            {% else %}
+              <span class="cat-thumb cat-thumb-empty"><i class="bi bi-egg-fried"></i></span>
+            {% endif %}
+            {{ c.name }}
+          </button>
+        {% endfor %}
+      </div>
+      <input type="search" id="menuSearch" class="form-control mb-3" placeholder="Search the menu...">
+      <div class="menu-grid" id="menuGrid"></div>
+      <div class="text-muted py-4 text-center" id="menuEmpty" hidden>No items found.</div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card cart-card">
+        <div class="card-body">
+          <h5 class="mb-3">{% if mode == 'add' %}New items{% else %}Current order{% endif %}</h5>
+
+          {% if mode == 'add' %}
+            <div class="alert alert-info py-2 small">
+              {% if add_order.table %}Table {{ add_order.table.name }}{% else %}Takeaway{% endif %}
+              &middot; these items will be added to the existing order.
+            </div>
+          {% elif mode == 'new' %}
+            <div class="btn-group w-100 mb-3" role="group" aria-label="Order type">
+              <input type="radio" class="btn-check" name="order_type" id="typeDine" value="dine_in" checked>
+              <label class="btn btn-outline-secondary" for="typeDine">Dine-in</label>
+              <input type="radio" class="btn-check" name="order_type" id="typeTake" value="takeaway">
+              <label class="btn btn-outline-secondary" for="typeTake">Takeaway</label>
+            </div>
+
+            <div id="tableWrap" class="mb-3">
+              <label class="form-label small mb-1">Table <span class="text-muted">(green = free, yellow = busy until the bill is paid)</span></label>
+              <div class="table-grid">
+                {% for t in tables %}
+                  <button type="button" class="table-tile {% if t.occupied %}occupied{% else %}free{% endif %}" data-id="{{ t.pk }}" {% if t.occupied %}disabled title="Table busy. Use + Add items on its order."{% endif %}>
+                    <span class="table-tile-name">{{ t.name }}</span>
+                    <span class="table-tile-meta">{{ t.capacity }} seats</span>
+                  </button>
+                {% endfor %}
+              </div>
+              <input type="hidden" id="tableSelect" value="">
+              {% if not tables %}
+                <div class="text-muted small mt-1">No tables yet. Ask a manager to add tables.</div>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          <div id="cartLines"></div>
+          <div id="cartEmpty" class="text-muted small py-3 text-center">Tap menu items to add them here.</div>
+          {% if mode != 'add' %}
+          <textarea id="orderNote" class="form-control mb-2" rows="2" maxlength="300" placeholder="Order note (extra, spicy, no onion...)"></textarea>
+          {% endif %}
+          <div class="d-flex justify-content-between fw-bold fs-5 my-3">
+            <span>Total</span><span id="cartTotal">Rs. 0.00</span>
+          </div>
+          <div id="cartError" class="alert alert-danger py-2" hidden></div>
+          <div id="cartSuccess" class="alert alert-success py-2" hidden>Your order has been sent. Thank you!</div>
+          <button type="button" id="sendOrder" class="btn btn-tez w-100" disabled>
+            {% if mode == 'customer' %}Place order{% elif mode == 'add' %}Add to order{% else %}Send to kitchen{% endif %}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const app = document.getElementById("waiterApp");
+    const mode = app.dataset.mode;
+    const menu = JSON.parse(document.getElementById("menu-data").textContent);
+    const grid = document.getElementById("menuGrid");
+    const menuEmpty = document.getElementById("menuEmpty");
+    const search = document.getElementById("menuSearch");
+    const lines = document.getElementById("cartLines");
+    const cartEmpty = document.getElementById("cartEmpty");
+    const totalEl = document.getElementById("cartTotal");
+    const errorBox = document.getElementById("cartError");
+    const successBox = document.getElementById("cartSuccess");
+    const sendBtn = document.getElementById("sendOrder");
+    const tableWrap = document.getElementById("tableWrap");
+    const tableSelect = document.getElementById("tableSelect");
+    const token = document.querySelector("[name=csrfmiddlewaretoken]").value;
+
+    let activeCategory = "all";
+    const cart = new Map();   // menu item id -> {id, name, price, qty, note}
+
+    function money(value) { return "Rs. " + value.toFixed(2); }
+
+    function makeButton(label, onClick) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-outline-secondary btn-sm cart-btn";
+      button.textContent = label;
+      button.addEventListener("click", onClick);
+      return button;
+    }
+
+    function renderMenu() {
+      const query = search.value.trim().toLowerCase();
+      grid.replaceChildren();
+      let shown = 0;
+      menu.forEach(function (item) {
+        if (activeCategory !== "all" && String(item.category) !== activeCategory) { return; }
+        if (query && item.name.toLowerCase().indexOf(query) === -1) { return; }
+        shown += 1;
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "menu-card";
+        if (item.image) {
+          const img = document.createElement("img");
+          img.className = "menu-card-img";
+          img.src = item.image;
+          img.alt = "";
+          card.appendChild(img);
+        }
+        const name = document.createElement("span");
+        name.className = "menu-card-name";
+        name.textContent = item.name;
+        const price = document.createElement("span");
+        price.className = "menu-card-price";
+        price.textContent = money(item.price);
+        card.append(name, price);
+        card.addEventListener("click", function () { addToCart(item); });
+        grid.appendChild(card);
+      });
+      menuEmpty.hidden = shown !== 0;
+    }
+
+    function addToCart(item) {
+      successBox.hidden = true;
+      const line = cart.get(item.id);
+      if (line) {
+        line.qty = Math.min(line.qty + 1, 50);
+      } else {
+        cart.set(item.id, { id: item.id, name: item.name, price: item.price, qty: 1, note: "" });
+      }
+      renderCart();
+    }
+
+    function changeQty(id, delta) {
+      const line = cart.get(id);
+      if (!line) { return; }
+      line.qty += delta;
+      if (line.qty < 1) { cart.delete(id); }
+      if (line.qty > 50) { line.qty = 50; }
+      renderCart();
+    }
+
+    function renderCart() {
+      lines.replaceChildren();
+      let total = 0;
+      cart.forEach(function (line) {
+        total += line.price * line.qty;
+
+        const row = document.createElement("div");
+        row.className = "cart-line";
+
+        const top = document.createElement("div");
+        top.className = "cart-line-top";
+        const name = document.createElement("span");
+        name.textContent = line.name;
+        const sum = document.createElement("span");
+        sum.className = "cart-line-sum";
+        sum.textContent = money(line.price * line.qty);
+        top.append(name, sum);
+
+        const controls = document.createElement("div");
+        controls.className = "cart-line-controls";
+        const qty = document.createElement("span");
+        qty.className = "cart-qty";
+        qty.textContent = String(line.qty);
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn btn-link btn-sm text-danger ms-auto p-0";
+        remove.textContent = "Remove";
+        remove.addEventListener("click", function () { cart.delete(line.id); renderCart(); });
+        controls.append(
+          makeButton("-", function () { changeQty(line.id, -1); }),
+          qty,
+          makeButton("+", function () { changeQty(line.id, 1); }),
+          remove
+        );
+
+        const note = document.createElement("input");
+        note.type = "text";
+        note.className = "form-control form-control-sm";
+        note.placeholder = "Note (for example: no onion)";
+        note.maxLength = 200;
+        note.value = line.note;
+        note.addEventListener("input", function () { line.note = note.value; });
+
+        row.append(top, controls, note);
+        lines.appendChild(row);
+      });
+      totalEl.textContent = money(total);
+      cartEmpty.hidden = cart.size !== 0;
+      sendBtn.disabled = cart.size === 0;
+    }
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
+    function resetSendButton() {
+      sendBtn.textContent = app.dataset.label;
+      sendBtn.disabled = cart.size === 0;
+    }
+
+    document.querySelectorAll(".js-category").forEach(function (button) {
+      button.addEventListener("click", function () {
+        activeCategory = button.dataset.category;
+        document.querySelectorAll(".js-category").forEach(function (other) {
+          other.classList.toggle("active", other === button);
+        });
+        renderMenu();
+      });
+    });
+
+    search.addEventListener("input", renderMenu);
+
+    document.querySelectorAll("input[name=order_type]").forEach(function (radio) {
+      radio.addEventListener("change", function () {
+        tableWrap.hidden = radio.value === "takeaway" && radio.checked;
+      });
+    });
+
+    document.querySelectorAll(".table-tile").forEach(function (tile) {
+      tile.addEventListener("click", function () {
+        document.querySelectorAll(".table-tile").forEach(function (other) {
+          other.classList.remove("selected");
+        });
+        tile.classList.add("selected");
+        tableSelect.value = tile.dataset.id;
+      });
+    });
+
+    sendBtn.addEventListener("click", function () {
+      errorBox.hidden = true;
+      const payload = {
+        items: Array.from(cart.values()).map(function (line) {
+          return { id: line.id, qty: line.qty, note: line.note };
+        }),
+      };
+      const noteEl = document.getElementById("orderNote");
+      if (noteEl) payload.note = noteEl.value;
+      if (mode === "new") {
+        const type = document.querySelector("input[name=order_type]:checked").value;
+        if (type === "dine_in" && !tableSelect.value) {
+          showError("Please choose a table.");
+          return;
+        }
+        payload.order_type = type;
+        payload.table = type === "dine_in" ? tableSelect.value : null;
+      }
+      sendBtn.disabled = true;
+      sendBtn.textContent = "Sending...";
+      fetch(app.dataset.submitUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": token },
+        body: JSON.stringify(payload),
+      })
+        .then(function (res) {
+          return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+        })
+        .then(function (result) {
+          if (result.ok && result.data.ok) {
+            if (mode === "customer") {
+              cart.clear();
+              if (noteEl) noteEl.value = "";
+              renderCart();
+              resetSendButton();
+              successBox.hidden = false;
+            } else {
+              window.location.href = app.dataset.listUrl;
+            }
+          } else {
+            showError(result.data.error || "Could not send the order.");
+            resetSendButton();
+          }
+        })
+        .catch(function () {
+          showError("Network error. Please try again.");
+          resetSendButton();
+        });
+    });
+
+    renderMenu();
+    renderCart();
+  });
+  </script>
+{% endif %}
+{% endblock %}

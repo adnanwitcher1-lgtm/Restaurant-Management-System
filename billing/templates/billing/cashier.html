@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Billing - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">Billing{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+  <div class="d-flex gap-2 mb-3">
+    <a href="{% url 'billing:cashier' %}" class="btn btn-sm {% if tab == 'unpaid' %}btn-accent{% else %}btn-outline-secondary{% endif %}">To bill</a>
+    <a href="{% url 'billing:cashier' %}?tab=paid" class="btn btn-sm {% if tab == 'paid' %}btn-accent{% else %}btn-outline-secondary{% endif %}">Paid today</a>
+  </div>
+
+  {% if tab == 'paid' %}
+    <div class="mb-3"><strong>Today's total: Rs. {{ today_total|floatformat:2 }}</strong></div>
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead><tr><th>Bill</th><th>Order</th><th>Table</th><th>Method</th><th>Total</th><th>Paid at</th><th></th></tr></thead>
+        <tbody>
+          {% for b in bills %}
+          <tr>
+            <td>#{{ b.pk }}</td>
+            <td>#{{ b.order_id }}</td>
+            <td>{% if b.order.table %}{{ b.order.table.name }}{% else %}Takeaway{% endif %}</td>
+            <td>{% for p in b.payments.all %}{{ p.get_method_display }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+            <td>Rs. {{ b.total|floatformat:2 }}</td>
+            <td>{{ b.paid_at|date:"H:i" }}</td>
+            <td><a href="{% url 'billing:receipt' b.pk %}" class="btn btn-sm btn-outline-secondary">Receipt</a></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="text-muted">No bills paid today.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="order-grid">
+      {% for o in orders %}
+      {% with b=o.bill %}
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between mb-2">
+            <strong>#{{ o.pk }} &middot; {% if o.table %}Table {{ o.table.name }}{% else %}Takeaway{% endif %}</strong>
+            <span class="text-muted small">{{ o.created_at|timesince }} ago</span>
+          </div>
+          <ul class="list-unstyled mb-3">
+            {% for i in o.items.all %}
+              <li>{{ i.quantity }} &times; {{ i.name }} <span class="text-muted">Rs. {{ i.line_total|floatformat:2 }}</span></li>
+            {% endfor %}
+          </ul>
+
+          {% if b %}
+            <div>Total: <strong>Rs. {{ b.total|floatformat:2 }}</strong></div>
+            <div>Paid: Rs. {{ b.paid_amount|floatformat:2 }}</div>
+            <div class="mb-2 text-danger">Balance: <strong>Rs. {{ b.balance|floatformat:2 }}</strong></div>
+            <form method="post" action="{% url 'billing:pay' o.pk %}" class="row g-2">
+              {% csrf_token %}
+              <div class="col-6"><input type="number" name="amount" min="0.01" step="0.01" class="form-control form-control-sm" placeholder="Amount (blank = full)"></div>
+              <div class="col-6">
+                <select name="method" class="form-select form-select-sm">
+                  {% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12"><button type="submit" class="btn btn-tez btn-sm w-100">Take payment</button></div>
+            </form>
+          {% else %}
+            <div class="mb-2"><strong>Subtotal: Rs. {{ o.total|floatformat:2 }}</strong></div>
+            <form method="post" action="{% url 'billing:pay' o.pk %}" class="row g-2 js-bill-form" data-subtotal="{{ o.total }}">
+              {% csrf_token %}
+              <div class="col-6"><input type="number" name="discount" value="0" min="0" step="0.01" class="form-control form-control-sm js-discount" placeholder="Discount (Rs.)"></div>
+              <div class="col-6"><input type="number" name="tax_percent" value="0" min="0" max="100" step="0.01" class="form-control form-control-sm js-tax" placeholder="Tax %"></div>
+              <div class="col-12 text-end">Total: <strong class="js-total">Rs. {{ o.total|floatformat:2 }}</strong></div>
+              <div class="col-6"><input type="number" name="amount" min="0.01" step="0.01" class="form-control form-control-sm js-amount" placeholder="Amount (blank = full)"></div>
+              <div class="col-6">
+                <select name="method" class="form-select form-select-sm">
+                  {% for value, label in methods %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12"><button type="submit" class="btn btn-tez btn-sm w-100">Take payment</button></div>
+            </form>
+            <div class="text-muted small mt-1">Discount in Rs., tax in %.</div>
+          {% endif %}
+
+          {% if b and b.payments.all %}
+            <hr class="my-2">
+            <div class="small text-muted">
+              {% for p in b.payments.all %}
+                <div>Rs. {{ p.amount|floatformat:2 }} &middot; {{ p.get_method_display }} &middot; {{ p.created_at|date:"H:i" }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endwith %}
+      {% empty %}
+      <div class="text-muted">No served orders waiting for payment.</div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endif %}
+
+<script>
+  document.querySelectorAll(".js-bill-form").forEach(function (form) {
+    var subtotal = parseFloat(form.dataset.subtotal) || 0;
+    var discount = form.querySelector(".js-discount");
+    var tax = form.querySelector(".js-tax");
+    var amount = form.querySelector(".js-amount");
+    var out = form.querySelector(".js-total");
+
+    function update() {
+      var d = Math.min(Math.max(parseFloat(discount.value) || 0, 0), subtotal);
+      var t = Math.min(Math.max(parseFloat(tax.value) || 0, 0), 100);
+      var total = (subtotal - d) * (1 + t / 100);
+      out.textContent = "Rs. " + total.toFixed(2);
+      amount.placeholder = "Amount (blank = " + total.toFixed(2) + ")";
+    }
+
+    discount.addEventListener("input", update);
+    tax.addEventListener("input", update);
+    update();
+  });
+</script>
+{% endblock %}

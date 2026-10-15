@@ -1,0 +1,343 @@
+{% extends "base.html" %}
+{% block title %}Analytics - TezPOS Pro{% endblock %}
+{% block main_class %}container-fluid dash-main{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap" rel="stylesheet">
+<style>
+  main.dash-main { padding: 14px 18px !important; max-width: none; }
+
+  .dash { display: grid; gap: 12px; height: calc(100vh - 28px); min-height: 540px;
+          grid-template-columns: minmax(0, 1fr) 170px;
+          grid-template-rows: auto auto minmax(0, 1.15fr) minmax(0, 1fr) auto; }
+  .d-head { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .d-kpis { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .d-ins  { grid-column: 2; grid-row: 2 / span 2; align-self: start; }
+  .d-r1   { grid-column: 1; grid-row: 3; display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 18px; min-height: 0; }
+  .d-r2   { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 18px; min-height: 0; }
+  .d-inv  { grid-column: 1 / -1; grid-row: 5; }
+
+  .dash-title { font-family: "DM Serif Display", Georgia, serif; font-weight: 400; font-size: 1.9rem; line-height: 1.1; color: var(--text); margin: 0; }
+  .date-pill { display: flex; align-items: center; gap: 8px; min-width: 215px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px; color: var(--text); font-size: .8rem; font-weight: 500; }
+
+  .card-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 4px 12px rgba(18, 52, 59, .07); }
+
+  .kpi { padding: 8px 10px 7px; min-width: 0; container-type: inline-size; }
+  .kpi-top { display: flex; align-items: center; gap: 9px; }
+  .kpi-icon { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: .8rem; color: #fff; flex: 0 0 26px; box-shadow: inset 0 -2px 4px rgba(0, 0, 0, .12); }
+  .kpi-body { min-width: 0; }
+  .kpi-label { font-size: .7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
+  .kpi-value { font-size: clamp(.8rem, 6.5cqw, 1.1rem); font-weight: 700; line-height: 1.15; color: var(--text); white-space: nowrap; }
+  .kpi-cap { font-size: .68rem; color: var(--muted); margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .delta { font-size: .9rem; margin-left: 4px; }
+  .delta.up { color: #2e9e5b; }
+  .delta.down { color: #c0392b; }
+
+  .ins-box { padding: 10px 12px; min-height: 150px; }
+  .ins-box h6 { font-size: .78rem; font-weight: 700; margin: 0 0 6px; color: var(--text); }
+  .insight { font-size: .68rem; line-height: 1.35; margin-bottom: 6px; color: var(--text); }
+
+  .plain { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .plain h6 { font-size: .85rem; font-weight: 600; margin: 0 0 4px; color: var(--text); }
+  .fill { position: relative; flex: 1; min-height: 0; }
+  .none-msg { font-size: .75rem; color: var(--muted); }
+
+  .heat { display: grid; gap: 2px; flex: 1; min-height: 0; grid-template-rows: repeat(7, minmax(0, 1fr)) auto; }
+  .heat-cell { border-radius: 3px; min-height: 0; }
+  .heat-lbl { font-size: .6rem; color: var(--muted); align-self: center; }
+  .heat-hdr { font-size: .6rem; color: var(--muted); text-align: center; }
+
+  .inv { padding: 8px 14px; }
+  .inv h6 { font-size: .85rem; font-weight: 600; margin: 0 0 2px; color: var(--text); }
+  .inv-text { font-size: .8rem; color: var(--text); }
+
+  @media (max-width: 991.98px) {
+    main.dash-main { padding: 12px !important; }
+    .dash { display: flex; flex-direction: column; height: auto; min-height: 0; }
+    .d-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .d-r1, .d-r2 { grid-template-columns: 1fr; }
+    .fill { flex: none; height: 240px; }
+    .heat { min-height: 200px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dash">
+  <div class="d-head">
+    <h1 class="dash-title">Analytics Dashboard</h1>
+    {% if branch %}
+    <div class="dropdown">
+      <button class="date-pill" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+        <i class="bi bi-calendar3"></i>
+        <span>{{ start|date:"d/m/Y" }} - {{ end|date:"d/m/Y" }}</span>
+        <i class="bi bi-chevron-down ms-auto"></i>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 270px;">
+        {% for label, f, t in presets %}
+          <a class="dropdown-item rounded {% if f == start and t == end %}active{% endif %}" href="?from={{ f|date:'Y-m-d' }}&to={{ t|date:'Y-m-d' }}">{{ label }}</a>
+        {% endfor %}
+        <hr class="my-2">
+        <form method="get" class="d-grid gap-2 m-0">
+          <input type="date" name="from" value="{{ start|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" class="form-control form-control-sm">
+          <input type="date" name="to" value="{{ end|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}" class="form-control form-control-sm">
+          <button type="submit" class="btn btn-accent btn-sm">Apply</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if not branch %}
+    <div class="alert alert-warning" style="grid-column: 1 / -1;">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+  {% else %}
+
+  <div class="d-kpis">
+    <div class="kpi card-box">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background: linear-gradient(135deg, #7ccbc0, #2f7f7a);"><i class="bi bi-currency-dollar"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Sales</div>
+          <div class="kpi-value">Rs. {{ sales|floatformat:"0g" }}{% if d_sales %}<i class="bi bi-arrow-{% if d_sales.up %}up{% else %}down{% endif %} delta {% if d_sales.up %}up{% else %}down{% endif %}" title="{{ d_sales.value }}% vs previous period"></i>{% endif %}</div>
+        </div>
+      </div>
+      <div class="kpi-cap">Total Sales</div>
+    </div>
+
+    <div class="kpi card-box">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background: linear-gradient(135deg, #efcb8b, #c9923c);"><i class="bi bi-arrow-left-right"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Total Transactions</div>
+          <div class="kpi-value">{{ count }}{% if d_count %}<i class="bi bi-arrow-{% if d_count.up %}up{% else %}down{% endif %} delta {% if d_count.up %}up{% else %}down{% endif %}" title="{{ d_count.value }}% vs previous period"></i>{% endif %}</div>
+        </div>
+      </div>
+      <div class="kpi-cap">Total Transactions</div>
+    </div>
+
+    <div class="kpi card-box">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background: linear-gradient(135deg, #9cc3d6, #4f87a3);"><i class="bi bi-cash-stack"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Average Order Value</div>
+          <div class="kpi-value">Rs. {{ aov|floatformat:"0g" }}{% if d_aov %}<i class="bi bi-arrow-{% if d_aov.up %}up{% else %}down{% endif %} delta {% if d_aov.up %}up{% else %}down{% endif %}" title="{{ d_aov.value }}% vs previous period"></i>{% endif %}</div>
+        </div>
+      </div>
+      <div class="kpi-cap">Average Order Value (AOV)</div>
+    </div>
+
+    <div class="kpi card-box">
+      <div class="kpi-top">
+        <div class="kpi-icon" style="background: linear-gradient(135deg, #e8a587, #b9603f);"><i class="bi bi-star-fill"></i></div>
+        <div class="kpi-body">
+          <div class="kpi-label">Popular Items</div>
+          <div class="kpi-value">{{ popular_sold }}</div>
+        </div>
+      </div>
+      <div class="kpi-cap">Popular Items Sold (Top 5 items)</div>
+    </div>
+  </div>
+
+  <div class="d-ins">
+    <div class="ins-box card-box">
+      <h6>Analytics Insights</h6>
+      {% for line in insights %}<div class="insight">{{ line }}</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="d-r1">
+    <div class="plain">
+      <h6>{{ trend_title }}</h6>
+      <div class="fill"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="plain">
+      <h6>Payment Method Breakdown</h6>
+      {% if has_payments %}
+        <div class="fill"><canvas id="payChart"></canvas></div>
+      {% else %}
+        <div class="none-msg">No payments in this period.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="d-r2">
+    <div class="plain">
+      <h6>Top-Selling Items</h6>
+      {% if top_items %}
+        <div class="fill"><canvas id="topChart"></canvas></div>
+      {% else %}
+        <div class="none-msg">No sales in this period.</div>
+      {% endif %}
+    </div>
+    <div class="plain">
+      <h6>Hourly Order Density</h6>
+      <div class="heat" style="grid-template-columns: 34px repeat({{ heat_cols }}, minmax(0, 1fr));">
+        {% for row in heat_rows %}
+          <div class="heat-lbl">{{ row.label }}</div>
+          {% for c in row.cells %}
+            <div class="heat-cell" style="background: rgba(45, 84, 94, {{ c.alpha }});" title="{{ row.label }} {{ c.h }}:00 - {{ c.n }} orders"></div>
+          {% endfor %}
+        {% endfor %}
+        <div></div>
+        {% for h in heat_header %}<div class="heat-hdr">{{ h }}</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="d-inv">
+    <div class="inv card-box">
+      <h6>Inventory Alerts <i class="bi bi-exclamation-circle-fill" style="color: var(--primary-dark); font-size: .8rem;"></i></h6>
+      <div class="inv-text">{% for i in alerts %}{{ i.name }}{% if not forloop.last %}, {% endif %}{% empty %}All stock levels are fine.{% endfor %}</div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+
+{% if branch %}
+{{ chart|json_script:"chart-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("chart-data").textContent);
+  var tops = data.top || [];
+  var grid = { color: "rgba(45,84,94,.10)" };
+
+  Chart.defaults.font.family = "Poppins, sans-serif";
+  Chart.defaults.font.size = 10;
+  Chart.defaults.color = "#2d545e";
+
+  new Chart(document.getElementById("trendChart"), {
+    type: "line",
+    data: {
+      labels: data.labels,
+      datasets: [
+        { label: "Sales (Rs.)", data: data.sales, borderColor: "#3f8f9c", backgroundColor: "rgba(63,143,156,.28)", fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: "#fff", pointBorderColor: "#3f8f9c", yAxisID: "y" },
+        { label: "Orders", data: data.orders, borderColor: "#d9a85f", backgroundColor: "rgba(225,179,130,.32)", fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: "#fff", pointBorderColor: "#d9a85f", yAxisID: "y1" }
+      ]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkip: true } },
+        y: { beginAtZero: true, grid: grid },
+        y1: { display: false, beginAtZero: true }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  var payCanvas = document.getElementById("payChart");
+  if (payCanvas) {
+    new Chart(payCanvas, {
+      type: "doughnut",
+      data: {
+        labels: data.pay_labels,
+        datasets: [{ data: data.pay_values, backgroundColor: ["#12343b", "#4a8a97", "#e1b382"], borderWidth: 0 }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        cutout: "55%",
+        plugins: { legend: { position: "right", labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 7, padding: 8 } } }
+      }
+    });
+  }
+  var topCanvas = document.getElementById("topChart");
+  if (topCanvas && tops.length) {
+    var topChart;
+    var imgs = tops.map(function (t) {
+      if (!t.image) return null;
+      var im = new Image();
+      im.onload = function () { if (topChart) topChart.update("none"); };
+      im.src = t.image;
+      return im;
+    });
+    topChart = new Chart(topCanvas, {
+      type: "bar",
+      data: {
+        labels: tops.map(function (t) { return t.name.length > 13 ? t.name.slice(0, 12) + "..." : t.name; }),
+        datasets: [{
+          data: tops.map(function (t) { return t.qty; }),
+          maxBarThickness: 46,
+          borderRadius: { topLeft: 12, topRight: 12 },
+          borderSkipped: false,
+          backgroundColor: function (c) {
+            var a = c.chart.chartArea;
+            if (!a) return "#2d545e";
+            var g = c.chart.ctx.createLinearGradient(0, a.bottom, 0, a.top);
+            if (c.dataIndex === 0) { g.addColorStop(0, "#c89666"); g.addColorStop(1, "#f0c999"); }
+            else { g.addColorStop(0, "#12343b"); g.addColorStop(1, "#3f8f9c"); }
+            return g;
+          }
+        }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        animation: { duration: 900, easing: "easeOutQuart" },
+        layout: { padding: { top: 52 } },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: grid, ticks: { maxRotation: 0, autoSkip: false, font: { size: 9 } } },
+          y: { beginAtZero: true, grid: grid, ticks: { precision: 0 } }
+        }
+      },
+      plugins: [{
+        id: "barExtras",
+        afterDatasetsDraw: function (chart) {
+          var ctx = chart.ctx;
+          chart.getDatasetMeta(0).data.forEach(function (bar, i) {
+            var r = Math.min(bar.width / 2, 20);
+            var cx = bar.x, cy = bar.y;
+            var im = imgs[i];
+
+            ctx.save();
+            ctx.shadowColor = "rgba(18,52,59,.35)";
+            ctx.shadowBlur = 8;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.restore();
+
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.clip();
+            if (im && im.complete && im.naturalWidth) {
+              var s = Math.min(im.naturalWidth, im.naturalHeight);
+              ctx.drawImage(im, (im.naturalWidth - s) / 2, (im.naturalHeight - s) / 2, s, s, cx - r, cy - r, r * 2, r * 2);
+            } else {
+              ctx.fillStyle = "#e1b382";
+              ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+              ctx.fillStyle = "#12343b";
+              ctx.font = "700 14px Poppins, sans-serif";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(tops[i].name.charAt(0).toUpperCase(), cx, cy + 1);
+            }
+            ctx.restore();
+
+            var label = (i === 0 ? "\u2605 " : "") + tops[i].qty;
+            ctx.save();
+            ctx.font = "600 10px Poppins, sans-serif";
+            var tw = ctx.measureText(label).width + 14;
+            var bx = cx - tw / 2, by = cy - r - 24;
+            ctx.beginPath();
+            ctx.roundRect(bx, by, tw, 17, 8.5);
+            ctx.fillStyle = i === 0 ? "#e1b382" : "#12343b";
+            ctx.fill();
+            ctx.fillStyle = i === 0 ? "#12343b" : "#fff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(label, cx, by + 9);
+            ctx.restore();
+          });
+        }
+      }]
+    });
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Inventory - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">Inventory{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+  {% if branch %}
+    <button type="button" class="btn btn-tez js-open-form"
+            data-url="{% url 'inventory:add' %}" data-title="Add Inventory Item">+ Add Item</button>
+  {% endif %}
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+
+  {% if low_count %}
+    <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <span>{{ low_count }} item{{ low_count|pluralize }} low or out of stock.</span>
+      {% if low_only %}
+        <a href="{% url 'inventory:list' %}" class="btn btn-sm btn-outline-secondary">Show all</a>
+      {% else %}
+        <a href="{% url 'inventory:list' %}?low=1" class="btn btn-sm btn-outline-secondary">Show only these</a>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr><th>Item</th><th>Stock</th><th>Low-stock level</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td>
+            {{ i.name }}
+            {% if not i.is_active %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+          </td>
+          <td>{{ i.quantity|floatformat:"-2" }} {{ i.unit }}</td>
+          <td>{{ i.low_stock_level|floatformat:"-2" }} {{ i.unit }}</td>
+          <td>
+            {% if i.stock_status == "out" %}<span class="badge bg-danger">Out of stock</span>
+            {% elif i.stock_status == "low" %}<span class="badge bg-warning text-dark">Low</span>
+            {% else %}<span class="badge bg-success">OK</span>{% endif %}
+          </td>
+          <td class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-tez btn-sm js-open-form"
+                    data-url="{% url 'inventory:adjust' i.pk %}" data-title="Adjust stock - {{ i.name }}">Adjust stock</button>
+            <a href="{% url 'inventory:history' i.pk %}" class="btn btn-outline-secondary btn-sm">History</a>
+            <button type="button" class="btn btn-accent btn-sm js-open-form"
+                    data-url="{% url 'inventory:edit' i.pk %}" data-title="Edit Inventory Item">Edit</button>
+            <form method="post" action="{% url 'inventory:toggle' i.pk %}" class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-secondary btn-sm">
+                {% if i.is_active %}Deactivate{% else %}Activate{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center">No inventory items yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="modal fade" id="inventoryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="inventoryModalTitle">Inventory</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="inventoryModalBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("inventoryModal");
+    document.body.appendChild(modalEl);
+    const modal = new bootstrap.Modal(modalEl);
+    const body = document.getElementById("inventoryModalBody");
+    const titleEl = document.getElementById("inventoryModalTitle");
+    const headers = { "X-Requested-With": "XMLHttpRequest" };
+    let currentUrl = "";
+
+    document.querySelectorAll(".js-open-form").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        currentUrl = btn.dataset.url;
+        titleEl.textContent = btn.dataset.title;
+        body.innerHTML = "Loading...";
+        modal.show();
+        const res = await fetch(currentUrl, { headers: headers });
+        body.innerHTML = await res.text();
+      });
+    });
+
+    body.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const res = await fetch(currentUrl, {
+        method: "POST",
+        body: new FormData(e.target),
+        headers: headers,
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        body.innerHTML = await res.text();
+      }
+    });
+  });
+  </script>
+{% endif %}
+{% endblock %}

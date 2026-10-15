@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Branches - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="m-0">Branches</h2>
+  <button type="button" class="btn btn-tez js-open-form"
+          data-url="{% url 'branches:add' %}" data-title="Add Branch">+ Add Branch</button>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover align-middle">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>City</th>
+        <th>Address</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in branches %}
+      <tr>
+        <td>{{ b.name }}</td>
+        <td>{{ b.city }}</td>
+        <td>{{ b.address|default:"-" }}</td>
+        <td>
+          {% if b.is_active %}
+            <span class="badge bg-success">Active</span>
+          {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+          {% endif %}
+        </td>
+        <td class="d-flex gap-2">
+          <button type="button" class="btn btn-accent btn-sm js-open-form"
+                  data-url="{% url 'branches:edit' b.pk %}" data-title="Edit Branch">Edit</button>
+          <form method="post" action="{% url 'branches:toggle' b.pk %}" class="m-0">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              {% if b.is_active %}Deactivate{% else %}Activate{% endif %}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="text-center">No branches yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal fade" id="branchModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="branchModalTitle">Branch</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="branchModalBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const modalEl = document.getElementById("branchModal");
+  document.body.appendChild(modalEl);
+  const modal = new bootstrap.Modal(modalEl);
+  const body = document.getElementById("branchModalBody");
+  const titleEl = document.getElementById("branchModalTitle");
+  const headers = { "X-Requested-With": "XMLHttpRequest" };
+  let currentUrl = "";
+
+  document.querySelectorAll(".js-open-form").forEach(function (btn) {
+    btn.addEventListener("click", async function () {
+      currentUrl = btn.dataset.url;
+      titleEl.textContent = btn.dataset.title;
+      body.innerHTML = "Loading...";
+      modal.show();
+      const res = await fetch(currentUrl, { headers: headers });
+      body.innerHTML = await res.text();
+    });
+  });
+
+  body.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const res = await fetch(currentUrl, {
+      method: "POST",
+      body: new FormData(e.target),
+      headers: headers,
+    });
+    if (res.ok) {
+      window.location.reload();
+    } else {
+      body.innerHTML = await res.text();
+    }
+  });
+});
+</script>
+{% endblock %}

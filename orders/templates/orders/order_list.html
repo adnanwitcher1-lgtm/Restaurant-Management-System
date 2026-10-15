@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Orders - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">Orders{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+  <a href="{% url 'orders:waiter' %}" class="btn btn-tez">+ New Order</a>
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+  <div class="d-flex gap-2 mb-3">
+    <a href="{% url 'orders:list' %}?tab=active"
+       class="btn btn-sm {% if tab == 'active' %}btn-accent{% else %}btn-outline-secondary{% endif %}">Active</a>
+    <a href="{% url 'orders:list' %}?tab=done"
+       class="btn btn-sm {% if tab == 'done' %}btn-accent{% else %}btn-outline-secondary{% endif %}">Completed today</a>
+  </div>
+
+  <div class="order-grid">
+    {% for o in orders %}
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <div class="fw-bold fs-5">#{{ o.pk }}</div>
+            <div class="text-muted small">
+              {% if o.table %}Table {{ o.table.name }}{% else %}Takeaway{% endif %}
+              &middot; {{ o.created_at|timesince }} ago
+              {% if o.waiter %}&middot; {{ o.waiter.username }}{% else %}&middot; <span class="badge bg-primary">Customer order</span>{% endif %}
+            </div>
+          </div>
+          <span class="badge {{ o.status_badge }}">{{ o.get_status_display }}</span>
+        </div>
+
+        <ul class="list-unstyled mb-3">
+          {% for i in o.items.all %}
+            <li>
+              {{ i.quantity }} &times; {{ i.name }}
+              {% if i.note %}<div class="text-muted small">{{ i.note }}</div>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+        {% if o.note %}<div class="alert alert-warning py-1 px-2 small mb-3"><strong>Note:</strong> {{ o.note }}</div>{% endif %}
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <strong>Rs. {{ o.total|floatformat:2 }}</strong>
+          <div class="d-flex gap-2">
+            {% if o.can_add %}
+              <a href="{% url 'orders:waiter' %}?add_to={{ o.pk }}" class="btn btn-sm btn-outline-secondary">+ Add items</a>
+            {% endif %}
+            {% for status, label in o.actions %}
+              <form method="post" action="{% url 'orders:set_status' o.pk %}" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="status" value="{{ status }}">
+                <button type="submit"
+                        class="btn btn-sm {% if status == 'cancelled' %}btn-outline-secondary{% elif status == 'served' %}btn-tez{% else %}btn-accent{% endif %}">{{ label }}</button>
+              </form>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-muted">
+      {% if tab == 'active' %}No active orders right now.{% else %}No completed orders today.{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <script src="{% static 'js/live-reload.js' %}"></script>
+{% endif %}
+{% endblock %}

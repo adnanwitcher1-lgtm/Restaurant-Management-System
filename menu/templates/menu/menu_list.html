@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Menu - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">Menu{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+  {% if branch %}
+  <div class="d-flex gap-2">
+    <button type="button" class="btn btn-accent js-open-form"
+            data-url="{% url 'menu:category_add' %}" data-title="Add Category">+ Add Category</button>
+    {% if has_active_category %}
+      <button type="button" class="btn btn-tez js-open-form"
+              data-url="{% url 'menu:item_add' %}" data-title="Add Menu Item">+ Add Item</button>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+
+     <div class="cat-strip">
+    <div class="cat-chip {% if not selected_id %}active{% endif %}">
+      <a href="{% url 'menu:list' %}" class="cat-chip-link">
+        <span class="cat-thumb cat-thumb-empty"><i class="bi bi-grid"></i></span>
+        <span><span class="cat-name d-block">All items</span></span>
+      </a>
+    </div>
+    {% for c in categories %}
+    <div class="cat-chip {% if selected_id == c.pk %}active{% endif %} {% if not c.is_active %}inactive{% endif %}">
+      <a href="{% url 'menu:list' %}?category={{ c.pk }}" class="cat-chip-link">
+        {% if c.image %}
+          <img src="{{ c.image.url }}" alt="" class="cat-thumb">
+        {% else %}
+          <span class="cat-thumb cat-thumb-empty"><i class="bi bi-egg-fried"></i></span>
+        {% endif %}
+        <span>
+          <span class="cat-name d-block">{{ c.name }}</span>
+          <span class="cat-count">{{ c.item_count }} item{{ c.item_count|pluralize }}</span>
+        </span>
+      </a>
+      <div class="dropdown">
+        <button type="button" class="cat-dots" data-bs-toggle="dropdown" aria-label="Category options">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><button type="button" class="dropdown-item js-open-form"
+                      data-url="{% url 'menu:category_edit' c.pk %}" data-title="Edit Category">Edit</button></li>
+          <li>
+            <form method="post" action="{% url 'menu:category_toggle' c.pk %}" class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="dropdown-item">{% if c.is_active %}Deactivate{% else %}Activate{% endif %}</button>
+            </form>
+          </li>
+        </ul>
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-muted">No categories yet. Add one to start.</div>
+    {% endfor %}
+  </div>
+
+  <div class="item-grid">
+    {% for i in items %}
+    <div class="item-card {% if not i.is_available %}unavailable{% endif %}">
+      <div class="item-img-wrap">
+        {% if i.image %}
+          <img src="{{ i.image.url }}" alt="{{ i.name }}" class="item-img">
+        {% else %}
+          <div class="item-img item-img-empty"><i class="bi bi-image"></i></div>
+        {% endif %}
+        {% if not i.is_available %}<span class="item-flag">Unavailable</span>{% endif %}
+      </div>
+      <div class="item-name">{{ i.name }}</div>
+      {% if i.description %}<div class="text-muted small">{{ i.description }}</div>{% endif %}
+      {% if selected_id is None %}<div class="text-muted small">{{ i.category.name }}</div>{% endif %}
+      <div class="item-price">Rs. {{ i.price|floatformat:2 }}</div>
+            <div class="d-flex align-items-center gap-2 mt-2">
+        <button type="button" class="btn btn-accent btn-sm js-open-form"
+                data-url="{% url 'menu:item_edit' i.pk %}" data-title="Edit Menu Item">Edit</button>
+        <form method="post" action="{% url 'menu:item_toggle' i.pk %}" class="m-0">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-outline-secondary btn-sm btn-icon"
+                  title="{% if i.is_available %}Mark unavailable{% else %}Mark available{% endif %}">
+            <i class="bi {% if i.is_available %}bi-eye-slash{% else %}bi-eye{% endif %}"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+    {% empty %}
+    <div class="text-muted">No items here yet.</div>
+    {% endfor %}
+  </div>
+
+  <div class="modal fade" id="menuModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="menuModalTitle">Menu</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="menuModalBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("menuModal");
+    document.body.appendChild(modalEl);
+    const modal = new bootstrap.Modal(modalEl);
+    const body = document.getElementById("menuModalBody");
+    const titleEl = document.getElementById("menuModalTitle");
+    const headers = { "X-Requested-With": "XMLHttpRequest" };
+    let currentUrl = "";
+
+    document.querySelectorAll(".js-open-form").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        currentUrl = btn.dataset.url;
+        titleEl.textContent = btn.dataset.title;
+        body.innerHTML = "Loading...";
+        modal.show();
+        const res = await fetch(currentUrl, { headers: headers });
+        body.innerHTML = await res.text();
+      });
+    });
+
+    body.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const res = await fetch(currentUrl, {
+        method: "POST",
+        body: new FormData(e.target),
+        headers: headers,
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        body.innerHTML = await res.text();
+      }
+    });
+  });
+  </script>
+{% endif %}
+{% endblock %}

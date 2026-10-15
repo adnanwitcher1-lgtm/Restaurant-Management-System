@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Tables - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="m-0">Tables{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+    {% if branch %}
+    <div class="d-flex gap-2">
+      <a href="{% url 'orders:table_qr_sheet' %}" class="btn btn-outline-secondary">QR codes</a>
+      <button type="button" class="btn btn-tez js-open-form"
+              data-url="{% url 'orders:table_add' %}" data-title="Add Table">+ Add Table</button>
+    </div>
+  {% endif %}
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet. Please ask the Owner to assign one.</div>
+{% else %}
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr><th>Table</th><th>Seats</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for t in tables %}
+        <tr>
+          <td>{{ t.name }}</td>
+          <td>{{ t.capacity }}</td>
+          <td>
+            {% if t.is_active %}<span class="badge bg-success">Active</span>
+            {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+          </td>
+          <td class="d-flex gap-2">
+            <button type="button" class="btn btn-accent btn-sm js-open-form"
+                    data-url="{% url 'orders:table_edit' t.pk %}" data-title="Edit Table">Edit</button>
+            <form method="post" action="{% url 'orders:table_toggle' t.pk %}" class="m-0">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-secondary btn-sm">
+                {% if t.is_active %}Deactivate{% else %}Activate{% endif %}
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center">No tables yet. Add your first table.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="modal fade" id="tableModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="tableModalTitle">Table</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="tableModalBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("tableModal");
+    document.body.appendChild(modalEl);
+    const modal = new bootstrap.Modal(modalEl);
+    const body = document.getElementById("tableModalBody");
+    const titleEl = document.getElementById("tableModalTitle");
+    const headers = { "X-Requested-With": "XMLHttpRequest" };
+    let currentUrl = "";
+
+    document.querySelectorAll(".js-open-form").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        currentUrl = btn.dataset.url;
+        titleEl.textContent = btn.dataset.title;
+        body.innerHTML = "Loading...";
+        modal.show();
+        const res = await fetch(currentUrl, { headers: headers });
+        body.innerHTML = await res.text();
+      });
+    });
+
+    body.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const res = await fetch(currentUrl, {
+        method: "POST",
+        body: new FormData(e.target),
+        headers: headers,
+      });
+      if (res.ok) {
+        window.location.reload();
+      } else {
+        body.innerHTML = await res.text();
+      }
+    });
+  });
+  </script>
+{% endif %}
+{% endblock %}

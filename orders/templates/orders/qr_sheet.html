@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Table QR codes - TezPOS Pro{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
+  <h2 class="m-0">Table QR codes{% if branch %} <span class="text-muted fs-5">- {{ branch.name }}</span>{% endif %}</h2>
+  <div class="d-flex gap-2">
+    <a href="{% url 'orders:table_list' %}" class="btn btn-outline-secondary">Back to tables</a>
+    <button type="button" class="btn btn-tez" onclick="window.print()">Print</button>
+  </div>
+</div>
+
+{% if not branch %}
+  <div class="alert alert-warning">No branch is assigned to your account yet.</div>
+{% else %}
+  <p class="text-muted small no-print">The QR code opens the address you are using right now. Open this page from the address customers will use (not 127.0.0.1) before printing.</p>
+  <div class="qr-grid">
+    {% for t in tables %}
+      <div class="qr-card">
+        <div class="fw-bold fs-4">Table {{ t.name }}</div>
+        <img src="{% url 'orders:table_qr' t.pk %}" alt="QR code for table {{ t.name }}" class="qr-img">
+        <div class="text-muted">Scan to order</div>
+      </div>
+    {% empty %}
+      <div class="text-muted">No active tables yet.</div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}
